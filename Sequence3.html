@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="./main.css">
+	</head>
+
+	<body>
+		<div id="info">
+			Sequence3<br />
+		</div>
+
+		<div id="loading-overlay">
+		  <div id="loading-bar">
+			  <span id="progress"></span>
+		  </div>
+		</div>
+
+		<div id="barinfo-overlay">
+			<div id="barinfo">
+			  Loading Animation Data...<br />
+			</div>
+
+		</div>
+
+	
+		<script type="module">
+
+			import * as THREE from './build/three.module.js';
+
+			import Stats from './three/jsm/libs/stats.module.js';
+			import { GUI } from './three/jsm/libs/dat.gui.module.js';
+
+			import { OrbitControls } from './three/jsm/controls/OrbitControls.js';
+			import { GLTFLoader } from './three/jsm/loaders/GLTFLoader.js';
+			import { EXRLoader } from './three/jsm/loaders/EXRLoader.js';
+			import { DRACOLoader } from './three/jsm/loaders/DRACOLoader.js';
+			
+			var container, stats, controls;
+			var camera, scene, renderer, mixer, mixer2;
+			var clock = new THREE.Clock();
+			var idleAction, walkAction, runAction;
+			var idleWeight, walkWeight, runWeight;
+			var actions, settings;
+			var panel = new GUI( { width: 310 } );
+			var singleStepMode = false;
+			var sizeOfNextStep = 0;
+			var prevspeed = 1;
+			var isPaused = false;
+			var  duration = 0;
+			var isBegin = true;
+			var control;
+			var wirematerial;
+			var API = {
+				color: 0xffffff,
+				exposure: 1.0,
+				Matcap : 'diffuse_color',
+				Wireframe : true,
+				SolidMesh : true,
+				Shadow :true,
+				PixelRatio : '1',
+				Sequence : 'Sequence3',
+				'Pause/Continue': pauseContinue,
+				'Step Forward': funcForward,
+				'Step Backward': funcBackward,
+				'Set Time' : 0,
+				'Reset Camera' : funcResCam
+			};
+			var solidMesh, wireMesh, groundMesh;
+			var dirLight;
+			var hemiLight;
+			var center;
+			document.addEventListener('keydown', function(event) {
+				if(event.key === 'Alt')
+					controls.screenSpacePanning = true;
+			});
+			
+			
+			document.addEventListener('keyup', function(event) {
+				if(event.key === 'Alt')
+					controls.screenSpacePanning = false;
+			});			
+			
+		
+			
+			
+			
+			init();
+			function init() {
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.25, 100 );
+				camera.position.set(-2.479088834282125, 2.5110711710984317, 3.0637414763573836 );
+
+				scene = new THREE.Scene();
+
+				scene.background = new THREE.Color( 0xa0a0a0 );
+				scene.fog = new THREE.Fog( 0xa0a0a0, 5, 30 );
+
+				hemiLight = new THREE.HemisphereLight( 0xffffff, 0x444444,0.5 );
+				hemiLight.position.set( 0, 20, 0 );
+				scene.add( hemiLight );
+
+				dirLight = new THREE.DirectionalLight( 0xffffff );
+				dirLight.position.set( - 3, 10, - 10 );
+				
+				dirLight.castShadow = true;
+				
+				dirLight.shadow.camera.top = 2;
+				dirLight.shadow.camera.bottom = - 2;
+				dirLight.shadow.camera.left = - 2;
+				dirLight.shadow.camera.right = 2;
+				dirLight.shadow.camera.near = 0.1;
+				dirLight.shadow.camera.far = 40;
+
+				scene.add( dirLight );
+
+
+				var grid = new THREE.GridHelper( 100, 100, 0x000000, 0x000000 );
+				grid.material.opacity = 0.2;
+				grid.material.transparent = true;
+				scene.add( grid );
+
+				groundMesh = new THREE.Mesh( new THREE.PlaneBufferGeometry( 100, 100 ), new THREE.MeshLambertMaterial( { color: 0x999999 , depthWrite: false} ) );
+				groundMesh.rotation.x = - Math.PI / 2;
+				groundMesh.position.y = 0.1;
+				groundMesh.receiveShadow = true;
+				scene.add( groundMesh );
+				loadAnim(API.Sequence);
+			
+
+
+				renderer = new THREE.WebGLRenderer( { antialias: false } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.toneMappingExposure = API.exposure;
+				renderer.outputEncoding = THREE.sRGBEncoding;
+				renderer.shadowMap.enabled = true;
+				renderer.powerPreference = "high-performance";
+				container.appendChild( renderer.domElement );
+
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				
+				controls.target.set( 0, 1, 0 );
+				controls.update();
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+				stats = new Stats();
+				container.appendChild( stats.dom );
+				
+			}
+
+			function computeMorphNormals(gm) {
+
+				gm.morphAttributes.normal = [];
+				var i, il;
+
+				var tmpGeo = new THREE.BufferGeometry();
+				tmpGeo.setIndex(gm.index);
+
+
+				for ( i = 0, il = gm.morphAttributes.position.length; i < il; i ++ ) {
+				
+					var currpos = gm.attributes.position.array.map((ours, ind) => ours + gm.morphAttributes.position[i].array[ind]);
+					tmpGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(currpos), 3));
+					tmpGeo.computeVertexNormals();
+					var realnormals = tmpGeo.attributes.normal.array.map((ours, ind) => ours - gm.attributes.normal.array[ind]);
+					tmpGeo.setAttribute('normal',new THREE.BufferAttribute(new Float32Array(realnormals), 3));
+					gm.morphAttributes.normal[i] = new THREE.BufferAttribute( new Float32Array(tmpGeo.attributes.normal.array), 3 );
+				}
+			}
+			
+			
+			function loadAnim(sequence){
+				const progressBar = document.querySelector( '#progress' );
+				const loadingOverlay = document.querySelector( '#loading-overlay' );
+				const barinfoOverlay = document.querySelector( '#barinfo-overlay' );
+				document.getElementById("info").textContent=sequence;
+				if(sequence == 'Sequence1')
+					sequence = 'Sequence3';
+				else if(sequence == 'Sequence3')
+					sequence = 'Sequence1';
+
+				var ch;
+				for (ch = scene.children.length-1; ch >= 0; ch--) { 
+					if (scene.children[ch].isScene){
+						scene.children[ch].dispose();
+						scene.remove(scene.children[ch]);
+					}
+				}
+				
+				var txtloader = new THREE.FileLoader();
+				var flat_array_line_indices;
+				var flat_array_face_indices;
+				var flat_array_vert_indices;
+				
+				var line_path = "models/".concat(sequence, "/", sequence, "_lines.txt")
+				var face_path = "models/".concat(sequence, "/", sequence, "_faces.txt")
+				var s2flat_path = "models/".concat(sequence, "/", sequence, "_s2flat.txt")
+				var mesh_path = "models/".concat(sequence, "/", sequence, ".glb")
+				
+				txtloader.load(
+					line_path,
+					function ( data ) {
+						flat_array_line_indices = data.split(',').map(Number);
+					}
+				);
+				
+				txtloader.load(
+					face_path,
+					function ( data ) {
+						flat_array_face_indices = data.split(',').map(Number);
+					}
+				);
+				txtloader.load(
+					s2flat_path,
+					function ( data ) {
+						flat_array_vert_indices = data.split(',').map(Number);
+					}
+				);
+				var dracoLoader = new DRACOLoader();
+				dracoLoader.setDecoderPath( 'js/libs/draco/gltf/' );
+				const manager = initLoadingManager();
+				var loader = new GLTFLoader( manager );
+
+				loader.load( mesh_path, function ( gltf ) {
+					var model = gltf.scene;
+					model.traverse( function ( child ) {
+						if ( child.isMesh ){ 
+							document.getElementById("barinfo").textContent="Processing Animation...";
+							wireMesh = child;
+
+							var real_flat_vert = []
+							var vertices = child.geometry.getAttribute( 'position' ).array;
+							var i;
+							for (i = 0; i < flat_array_vert_indices.length; i++) { 
+								 var index = flat_array_vert_indices[i];
+								 real_flat_vert.push(vertices[index]);
+							} 
+							child.geometry.setIndex(flat_array_line_indices);
+							child.geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(real_flat_vert), 3));
+
+							for (i = 0; i < child.geometry.morphAttributes.position.length; i++) { 
+								 var marray = child.geometry.morphAttributes.position[i].array;
+								 var j;
+								 var real_morph = []
+								 for (j = 0; j < flat_array_vert_indices.length; j++) { 
+										var index = flat_array_vert_indices[j];
+										real_morph.push(marray[index]);
+								 }
+								 child.geometry.morphAttributes.position[i] = new THREE.BufferAttribute( new Float32Array(real_morph), 3 );										
+							}
+							child.castShadow = true;
+							child.material =  new THREE.MeshBasicMaterial( {color: 0x000000, wireframe: true, morphTargets: true} );
+
+						}
+					} );
+
+					var model2 = model.clone();
+					model2.traverse( function ( child ) {
+						if ( child.isMesh ){ 
+							solidMesh = child;
+							child.geometry = solidMesh.geometry.clone();
+							child.geometry.setIndex(flat_array_face_indices);
+							child.geometry.computeVertexNormals(true);
+							computeMorphNormals(solidMesh.geometry);
+							child.updateMorphTargets();
+							child.castShadow = true;
+							//child.receiveShadow = true;
+
+							child.material = new THREE.MeshLambertMaterial( { color: 0x58e74,  morphNormals: true,morphTargets: true, polygonOffset:true, polygonOffsetFactor :1.0, polygonOffsetUnits :1.0 } );
+						}
+					} );
+	
+					scene.add( model);
+					scene.add( model2);
+	
+					duration = gltf.animations[ 0 ].duration;
+					mixer = new THREE.AnimationMixer(  model  );
+					mixer2 = new THREE.AnimationMixer(  model2  );
+					center = getCenterPoint(solidMesh);
+					controls.target.set(center.x,center.y,center.z);
+					camera.position.set(center.x+3,center.y+0.5,center.z );
+					controls.update();
+
+					mixer.clipAction( gltf.animations[ 0 ] ).play();
+					mixer2.clipAction( gltf.animations[ 0 ] ).play();
+					mixer.timeScale = 1;
+					mixer2.timeScale = 1;
+					createPanel();
+					animate();			
+
+				}, manager.onProgress, manager.onError );		
+
+			}
+
+			function initLoadingManager() {
+			  
+				const manager = new THREE.LoadingManager();
+				const progressBar = document.querySelector( '#progress' );
+				const loadingOverlay = document.querySelector( '#loading-overlay' );
+				const barinfoOverlay = document.querySelector( '#barinfo-overlay' );
+				let percentComplete = 1;
+				let frameID = null;
+				const updateAmount = 0.5;
+				const animateBar = () => {
+					percentComplete += updateAmount;
+					if ( percentComplete >= 100 ) {				  
+					  progressBar.style.backgroundColor = 'blue'
+					  percentComplete = 1;
+					}
+					progressBar.style.width = percentComplete + '%';
+					frameID = requestAnimationFrame( animateBar )
+
+				}
+
+				manager.onStart = () => {
+					if ( frameID !== null ) return;
+				};
+
+				manager.onLoad = function ( ) {					
+					loadingOverlay.classList.add( 'loading-overlay-hidden' );
+					barinfoOverlay.classList.add( 'loading-overlay-hidden' );
+				};
+			  
+				manager.onError = function ( e ) { 
+					console.error( e ); 
+					progressBar.style.backgroundColor = 'red';
+				}
+			  
+				manager.onProgress = function (item) {            
+					if(item.loaded){
+						console.log(item, item.loaded, item.total);
+						var percentage = Math.round(item.loaded / item.total * 100)
+						console.log('Loaded:', percentage + '%');
+						progressBar.style.width = percentage + '%';
+						if (percentage > 40)
+							document.getElementById("barinfo").textContent= "Finishing Scene...";
+					}
+				}; 
+				return manager;
+			}
+			function onTransitionEnd( event ) {
+				const element = event.target;
+				element.remove();
+			}
+		
+			function getCenterPoint(mesh) {
+				computeBoundingBox(mesh.geometry);
+				var box =  mesh.geometry.boundingBox.clone();
+				mesh.updateMatrixWorld( true );
+				box.copy( mesh.geometry.boundingBox ).applyMatrix4( mesh.matrixWorld );
+				return box.getCenter();
+			}
+
+			function computeBoundingBox(geom) {
+				if ( geom.boundingBox === null ) 
+					geom.boundingBox = new Box3();
+				var position = geom.attributes.position;
+				var morphAttributesPosition = geom.morphAttributes.position;
+
+				if ( position !== undefined ) 
+					geom.boundingBox.setFromBufferAttribute( position );
+				else 
+					geom.boundingBox.makeEmpty(); 
+				if ( isNaN( geom.boundingBox.min.x ) || isNaN( geom.boundingBox.min.y ) || isNaN( geom.boundingBox.min.z ) ) 
+					console.error( 'THREE.BufferGeometry.computeBoundingBox: Computed min/max have NaN values. The "position" attribute is likely to have NaN values.', geom );
+			} 
+			function createPanel() {
+				panel.destroy(); 
+				panel = new GUI( { width: 310 } );
+				var folder1 = panel.addFolder( 'Animation' );
+				var folder2 = panel.addFolder( 'Display' );
+				folder1.add( API, 'Sequence', ['Sequence1','Sequence2','Sequence3'] ).onChange( function () { 
+					var address = "https://www.cs.utah.edu/~kutay/mocap/"; 
+					address = address.concat(API.Sequence, ".html");
+					location.replace(address);
+				}  );
+
+				folder1.add( API, 'Pause/Continue' );
+				folder1.add( API, 'Step Forward' );
+				folder1.add( API, 'Step Backward' );
+				folder1.add( API, 'Set Time', 0.0, duration, 0.01 ).listen().onChange( setTime );
+
+				folder2.add( API, 'Matcap', [  'diffuse_color',
+											   'ceramic_dark',
+											   'ceramic_lightbulb', 
+											   'clay_brown',
+											   'clay_muddy',
+											   'clay_studio',
+											   'jade',
+											   'metal_anisotropic',
+											   'metal_carpaint',
+											   'metal_lead',
+											   'metal_shiny',
+											   'pearl',
+											   'red',
+											   'resin',
+											   'skin'] ).onChange( anotherMatcap );
+
+				folder2.add( API, 'Wireframe' ).onChange( wireframeFunc );
+				folder2.add( API, 'SolidMesh' ).onChange( solidcolorFunc );
+				folder2.add( API, 'Shadow' ).onChange( shadowFunc );
+				folder2.add( API, 'PixelRatio', ['1','1/2','1/4','1/8'] ).onChange( pixelratioFunc );
+				folder2.add( API, 'Reset Camera');
+   
+				folder1.open();
+				folder2.open();
+				if(isBegin)
+					panel.close();
+			}
+
+			function wireframeFunc( ) {
+				if (API.Wireframe == true)  
+					wireMesh.visible = true; 
+				else  
+					wireMesh.visible = false; 
+			}
+			function solidcolorFunc( ) {
+				if (API.SolidMesh == true)  
+					solidMesh.visible = true; 
+				else 
+					solidMesh.visible = false;  
+			}
+			function shadowFunc( ) {
+				if (API.Shadow == true){
+					solidMesh.castShadow = true;
+					solidMesh.receiveShadow = true;
+					wireMesh.castShadow = true;
+					groundMesh.receiveShadow = true;
+					dirLight.castShadow = true;
+				}
+				else{
+					solidMesh.castShadow = false;
+					solidMesh.receiveShadow = false;
+					wireMesh.castShadow = false;
+					groundMesh.receiveShadow = false;
+					dirLight.castShadow = false;
+				}
+	
+			}
+			
+			function pixelratioFunc( ) {
+				if (API.PixelRatio == '1'){
+					renderer.setPixelRatio( window.devicePixelRatio );
+				}
+				else if (API.PixelRatio == '1/2'){
+					renderer.setPixelRatio( window.devicePixelRatio/2 );
+				}
+				else if (API.PixelRatio == '1/4'){
+					renderer.setPixelRatio( window.devicePixelRatio/4 );
+				}
+				else if (API.PixelRatio == '1/8'){
+					renderer.setPixelRatio( window.devicePixelRatio/8 );
+				} 
+			}
+
+			function anotherMatcap( ) {
+
+				if(API.Matcap == 'diffuse_color'){
+					solidMesh.material = new THREE.MeshLambertMaterial( { color: 0x58e74,  morphNormals: true,morphTargets: true, polygonOffset:true, polygonOffsetFactor :1.0, polygonOffsetUnits :1.0 } );
+					return;
+				}
+
+				var matcapexr = API.Matcap.concat(".exr");
+				var path = 'matcaps/';
+				var matcap_wpath = path.concat(matcapexr);
+				var exrloader = new EXRLoader(  );
+				var cur_matcap = exrloader.load( matcap_wpath );
+				solidMesh.material = new THREE.MeshMatcapMaterial( {
+					color: API.color,
+					matcap: cur_matcap,
+					morphTargets: true,
+					morphNormals: true,
+					polygonOffset:true, polygonOffsetFactor :1.0, polygonOffsetUnits :1.0 } );
+				
+			}
+
+			function setTime( time) {
+
+				var prevtimescale = mixer.timeScale;
+				mixer.timeScale = 1;
+				mixer.setTime(time);
+				mixer.timeScale = prevtimescale;
+				mixer2.timeScale = 1;
+				mixer2.setTime(time);
+				mixer2.timeScale = prevtimescale;
+			
+			}
+			function modifyTimeScale( speed ) {
+				if(!isPaused)
+					mixer.timeScale = speed;
+
+			}
+			function pauseContinue() {
+				
+				if (isPaused || singleStepMode){
+					mixer.timeScale = prevspeed;
+					mixer2.timeScale = prevspeed;
+					isPaused = false;
+					singleStepMode = false;
+				}
+				else{
+					prevspeed = mixer.timeScale;
+					mixer.timeScale = 0;
+					mixer2.timeScale = 0;
+					isPaused = true;
+				}
+
+
+			}
+			function funcForward() {
+
+				singleStepMode = true;
+				mixer.timeScale = prevspeed;
+				mixer2.timeScale = prevspeed;
+				sizeOfNextStep = 0.1;
+
+			}
+			function funcBackward() {
+
+				singleStepMode = true;
+				mixer.timeScale = prevspeed;
+				mixer2.timeScale = prevspeed;
+				sizeOfNextStep = -0.1;
+
+			}
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+			function funcResCam(){
+				center = getCenterPoint(solidMesh);
+				controls.target.set(center.x,center.y,center.z);
+				camera.position.set(center.x+3,center.y+0.5,center.z );
+				controls.update();
+			
+			
+			}
+
+
+
+			function animate() {
+				requestAnimationFrame( animate );			
+				var delta = clock.getDelta();
+				if ( singleStepMode ) {
+
+					delta = sizeOfNextStep;
+					sizeOfNextStep = 0;
+
+				}
+				if(mixer.time >= (duration-0.01)){
+					mixer.setTime(0);
+					mixer2.setTime(0);
+					renderer.render( scene, camera );
+				}
+				else{
+					mixer.update( delta );
+					mixer2.update( delta );
+					
+					renderer.render( scene, camera );
+				}
+				stats.update();
+				API['Set Time'] = mixer.time;
+
+			}
+
+		</script>
+
+	</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
