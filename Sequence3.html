@@ -387,10 +387,12 @@
 
 					if(item.loaded){
 						console.log(item, item.loaded, item.total);
+						var percentage = 0;
 						//github seems to have content length issue, adding total value here manually
 						if(item.total == 0)
-							item.total = 54411456;
-						var percentage = Math.round(item.loaded / item.total * 100)
+							percentage = Math.round(item.loaded / 54411456 * 100);
+						else
+							percentage = Math.round(item.loaded / item.total * 100);
 						console.log('Loaded:', percentage + '%');
 
 						progressBar.style.width = percentage + '%';
