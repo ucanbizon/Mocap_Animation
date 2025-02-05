@@ -386,11 +386,13 @@
 				manager.onProgress = function (item) {            
 
 					if(item.loaded){
-						console.log(item, item.loaded, item.total);
+						console.log(item, item.loaded, item.total);			
+						var percentage = 0;
 						//github seems to have content length issue, adding total value here manually
 						if(item.total == 0)
-							item.total = 76968140;
-						var percentage = Math.round(item.loaded / item.total * 100)
+							percentage = Math.round(item.loaded / 76968140 * 100);
+						else
+							percentage = Math.round(item.loaded / item.total * 100);
 						console.log('Loaded:', percentage + '%');
 
 						progressBar.style.width = percentage + '%';
