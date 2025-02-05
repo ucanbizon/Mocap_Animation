@@ -1,5 +1,6 @@
 # Mocap_Animation
-WebGL viewer for motion capture animation
+WebGL viewer for the SIGGRAPH paper I worked on.
 
-Try here:
-https://ucanbizon.github.io/Mocap_Animation/Sequence1.html
+For the paper: https://arxiv.org/abs/2102.07343
+
+For the demo: https://ucanbizon.github.io/Mocap_Animation/
