@@ -64,8 +64,7 @@
 				'Pause/Continue': pauseContinue,
 				'Step Forward': funcForward,
 				'Step Backward': funcBackward,
-				'Set Time' : 0,
-				'Reset Camera' : funcResCam
+				'Set Time' : 0
 			};
 			var solidMesh, wireMesh, groundMesh;
 			var dirLight;
@@ -115,9 +114,11 @@
 				dirLight.shadow.camera.right = 2;
 				dirLight.shadow.camera.near = 0.1;
 				dirLight.shadow.camera.far = 40;
-
+				//dirLight.shadow.bias = 0.001;
+				
+				//var helper = new THREE.CameraHelper( dirLight.shadow.camera );
 				scene.add( dirLight );
-
+				//scene.add( helper );
 
 				var grid = new THREE.GridHelper( 100, 100, 0x000000, 0x000000 );
 				grid.material.opacity = 0.2;
@@ -143,6 +144,8 @@
 				renderer.powerPreference = "high-performance";
 				container.appendChild( renderer.domElement );
 
+				//var pmremGenerator = new THREE.PMREMGenerator( renderer );
+				//pmremGenerator.compileEquirectangularShader();
 
 				controls = new OrbitControls( camera, renderer.domElement );
 				
@@ -151,11 +154,13 @@
 
 				window.addEventListener( 'resize', onWindowResize, false );
 
+				// stats
 				stats = new Stats();
 				container.appendChild( stats.dom );
 				
 			}
-
+			
+			
 			function computeMorphNormals(gm) {
 
 				gm.morphAttributes.normal = [];
@@ -163,7 +168,7 @@
 
 				var tmpGeo = new THREE.BufferGeometry();
 				tmpGeo.setIndex(gm.index);
-
+				//tmpGeo.faces = gm.faces;
 
 				for ( i = 0, il = gm.morphAttributes.position.length; i < il; i ++ ) {
 				
@@ -224,15 +229,25 @@
 						flat_array_vert_indices = data.split(',').map(Number);
 					}
 				);
+
+
 				var dracoLoader = new DRACOLoader();
 				dracoLoader.setDecoderPath( 'js/libs/draco/gltf/' );
+
 				const manager = initLoadingManager();
+
 				var loader = new GLTFLoader( manager );
+				
+				
 
 				loader.load( mesh_path, function ( gltf ) {
+
 					var model = gltf.scene;
+
 					model.traverse( function ( child ) {
 						if ( child.isMesh ){ 
+							
+							
 							document.getElementById("barinfo").textContent="Processing Animation...";
 							wireMesh = child;
 
@@ -251,16 +266,21 @@
 								 var j;
 								 var real_morph = []
 								 for (j = 0; j < flat_array_vert_indices.length; j++) { 
+
 										var index = flat_array_vert_indices[j];
 										real_morph.push(marray[index]);
+
 								 }
-								 child.geometry.morphAttributes.position[i] = new THREE.BufferAttribute( new Float32Array(real_morph), 3 );										
+								 child.geometry.morphAttributes.position[i] = new THREE.BufferAttribute( new Float32Array(real_morph), 3 );
+										
 							}
+
 							child.castShadow = true;
 							child.material =  new THREE.MeshBasicMaterial( {color: 0x000000, wireframe: true, morphTargets: true} );
 
 						}
 					} );
+
 
 					var model2 = model.clone();
 					model2.traverse( function ( child ) {
@@ -277,10 +297,14 @@
 							child.material = new THREE.MeshLambertMaterial( { color: 0x58e74,  morphNormals: true,morphTargets: true, polygonOffset:true, polygonOffsetFactor :1.0, polygonOffsetUnits :1.0 } );
 						}
 					} );
-	
+
+				
+					
 					scene.add( model);
 					scene.add( model2);
-	
+
+
+					
 					duration = gltf.animations[ 0 ].duration;
 					mixer = new THREE.AnimationMixer(  model  );
 					mixer2 = new THREE.AnimationMixer(  model2  );
@@ -288,7 +312,9 @@
 					controls.target.set(center.x,center.y,center.z);
 					camera.position.set(center.x+3,center.y+0.5,center.z );
 					controls.update();
-
+					//var helper = new THREE.BoundingBoxHelper(solidMesh, 0xff0000);
+					//helper.update();
+					//scene.add(helper);
 					mixer.clipAction( gltf.animations[ 0 ] ).play();
 					mixer2.clipAction( gltf.animations[ 0 ] ).play();
 					mixer.timeScale = 1;
@@ -297,7 +323,7 @@
 					animate();			
 
 				}, manager.onProgress, manager.onError );		
-
+				
 			}
 
 			function initLoadingManager() {
@@ -306,79 +332,153 @@
 				const progressBar = document.querySelector( '#progress' );
 				const loadingOverlay = document.querySelector( '#loading-overlay' );
 				const barinfoOverlay = document.querySelector( '#barinfo-overlay' );
+
 				let percentComplete = 1;
 				let frameID = null;
-				const updateAmount = 0.5;
+
+				const updateAmount = 0.5; // in percent of bar width, should divide 100 evenly
+
 				const animateBar = () => {
 					percentComplete += updateAmount;
-					if ( percentComplete >= 100 ) {				  
+					if ( percentComplete >= 100 ) {
+					  
 					  progressBar.style.backgroundColor = 'blue'
 					  percentComplete = 1;
+
 					}
+
 					progressBar.style.width = percentComplete + '%';
+
 					frameID = requestAnimationFrame( animateBar )
 
 				}
 
 				manager.onStart = () => {
+
+					// prevent the timer being set again
+					// if onStart is called multiple times
 					if ( frameID !== null ) return;
+
+					//animateBar();
+
 				};
 
-				manager.onLoad = function ( ) {					
+				manager.onLoad = function ( ) {
+					
 					loadingOverlay.classList.add( 'loading-overlay-hidden' );
 					barinfoOverlay.classList.add( 'loading-overlay-hidden' );
+
+					// reset the bar in case need to use it again
+					//percentComplete = 0;
+					//progressBar.style.width = 0;
+					//cancelAnimationFrame( frameID );
+
 				};
 			  
 				manager.onError = function ( e ) { 
+
 					console.error( e ); 
+
 					progressBar.style.backgroundColor = 'red';
+
 				}
 			  
 				manager.onProgress = function (item) {            
+
 					if(item.loaded){
 						console.log(item, item.loaded, item.total);
+						//github seems to have content length issue, adding total value here manually
+						if(item.total == 0)
+							item.total = 76968140;
 						var percentage = Math.round(item.loaded / item.total * 100)
 						console.log('Loaded:', percentage + '%');
+
 						progressBar.style.width = percentage + '%';
 						if (percentage > 40)
 							document.getElementById("barinfo").textContent= "Finishing Scene...";
 					}
-				}; 
+					//frameID = requestAnimationFrame( animateBar )
+					
+					
+					//bar.animate(1.0);
+				};
+			  
 				return manager;
+			  
+
+			  
+			  
 			}
 			function onTransitionEnd( event ) {
+
 				const element = event.target;
 				element.remove();
+				
 			}
 		
 			function getCenterPoint(mesh) {
+				//var geometry = mesh.geometry;
+				//mesh.geometry.computeBoundingBox();   
 				computeBoundingBox(mesh.geometry);
 				var box =  mesh.geometry.boundingBox.clone();
+				//var center = geometry.boundingSphere.getCenter();
 				mesh.updateMatrixWorld( true );
 				box.copy( mesh.geometry.boundingBox ).applyMatrix4( mesh.matrixWorld );
+				//scope.union( box );
+				//mesh.localToWorld( center );
 				return box.getCenter();
 			}
+			
+			
+
+
 
 			function computeBoundingBox(geom) {
-				if ( geom.boundingBox === null ) 
+
+				if ( geom.boundingBox === null ) {
+
 					geom.boundingBox = new Box3();
+
+				}
+
 				var position = geom.attributes.position;
 				var morphAttributesPosition = geom.morphAttributes.position;
 
-				if ( position !== undefined ) 
+				if ( position !== undefined ) {
+
 					geom.boundingBox.setFromBufferAttribute( position );
-				else 
-					geom.boundingBox.makeEmpty(); 
-				if ( isNaN( geom.boundingBox.min.x ) || isNaN( geom.boundingBox.min.y ) || isNaN( geom.boundingBox.min.z ) ) 
+
+
+				} else {
+
+					geom.boundingBox.makeEmpty();
+
+				}
+
+				if ( isNaN( geom.boundingBox.min.x ) || isNaN( geom.boundingBox.min.y ) || isNaN( geom.boundingBox.min.z ) ) {
+
 					console.error( 'THREE.BufferGeometry.computeBoundingBox: Computed min/max have NaN values. The "position" attribute is likely to have NaN values.', geom );
-			} 
+
+				}
+
+			}
+
+
+	
 			function createPanel() {
-				panel.destroy(); 
+				panel.destroy();
+				
+				
+				
 				panel = new GUI( { width: 310 } );
 				var folder1 = panel.addFolder( 'Animation' );
 				var folder2 = panel.addFolder( 'Display' );
-				folder1.add( API, 'Sequence', ['Sequence1','Sequence2','Sequence3'] ).onChange( function () { 
-					var address = "https://ucanbizon.github.io/Mocap_Animation/"; 
+
+
+
+				folder1.add( API, 'Sequence', ['Sequence1','Sequence2','Sequence3'] ).onChange( function () {
+					//loadAnim(API.Sequence);
+					var address = ""; 
 					address = address.concat(API.Sequence, ".html");
 					location.replace(address);
 				}  );
@@ -408,8 +508,8 @@
 				folder2.add( API, 'SolidMesh' ).onChange( solidcolorFunc );
 				folder2.add( API, 'Shadow' ).onChange( shadowFunc );
 				folder2.add( API, 'PixelRatio', ['1','1/2','1/4','1/8'] ).onChange( pixelratioFunc );
-				folder2.add( API, 'Reset Camera');
-   
+
+
 				folder1.open();
 				folder2.open();
 				if(isBegin)
@@ -417,16 +517,24 @@
 			}
 
 			function wireframeFunc( ) {
-				if (API.Wireframe == true)  
-					wireMesh.visible = true; 
-				else  
-					wireMesh.visible = false; 
+				if (API.Wireframe == true){
+					wireMesh.visible = true;
+				}
+				else{
+					wireMesh.visible = false;
+				}
+	
 			}
 			function solidcolorFunc( ) {
-				if (API.SolidMesh == true)  
-					solidMesh.visible = true; 
-				else 
-					solidMesh.visible = false;  
+				if (API.SolidMesh == true){
+					solidMesh.visible = true;
+
+				}
+				else{
+					solidMesh.visible = false;
+
+				}
+	
 			}
 			function shadowFunc( ) {
 				if (API.Shadow == true){
@@ -447,6 +555,7 @@
 			}
 			
 			function pixelratioFunc( ) {
+				
 				if (API.PixelRatio == '1'){
 					renderer.setPixelRatio( window.devicePixelRatio );
 				}
@@ -458,9 +567,14 @@
 				}
 				else if (API.PixelRatio == '1/8'){
 					renderer.setPixelRatio( window.devicePixelRatio/8 );
-				} 
+				}
+	
 			}
 
+			
+
+			
+			
 			function anotherMatcap( ) {
 
 				if(API.Matcap == 'diffuse_color'){
@@ -539,19 +653,17 @@
 				renderer.setSize( window.innerWidth, window.innerHeight );
 
 			}
-			function funcResCam(){
-				center = getCenterPoint(solidMesh);
-				controls.target.set(center.x,center.y,center.z);
-				camera.position.set(center.x+3,center.y+0.5,center.z );
-				controls.update();
-			
-			
-			}
+
 
 
 
 			function animate() {
-				requestAnimationFrame( animate );			
+				//console.log("camera.position");
+				//console.log(camera.position);
+				//console.log("controls.target");
+				//console.log(controls.target);
+				requestAnimationFrame( animate );
+				
 				var delta = clock.getDelta();
 				if ( singleStepMode ) {
 
@@ -559,6 +671,7 @@
 					sizeOfNextStep = 0;
 
 				}
+
 				if(mixer.time >= (duration-0.01)){
 					mixer.setTime(0);
 					mixer2.setTime(0);
