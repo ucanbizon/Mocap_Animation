@@ -324,11 +324,7 @@
 
 				}, manager.onProgress, manager.onError );		
 				
-
 			}
-
-
-
 
 			function initLoadingManager() {
 			  
@@ -344,10 +340,6 @@
 
 				const animateBar = () => {
 					percentComplete += updateAmount;
-
-					// if the bar fills up, just reset it.
-					// I'm changing the color only once, you 
-					// could get fancy here and set up the colour to get "redder" every time
 					if ( percentComplete >= 100 ) {
 					  
 					  progressBar.style.backgroundColor = 'blue'
@@ -376,7 +368,7 @@
 					loadingOverlay.classList.add( 'loading-overlay-hidden' );
 					barinfoOverlay.classList.add( 'loading-overlay-hidden' );
 
-					// reset the bar in case we need to use it again
+					// reset the bar in case need to use it again
 					//percentComplete = 0;
 					//progressBar.style.width = 0;
 					//cancelAnimationFrame( frameID );
@@ -395,6 +387,9 @@
 
 					if(item.loaded){
 						console.log(item, item.loaded, item.total);
+						//github seems to have content length issue, adding total value here manually
+						if(item.total == 0)
+							item.total = 85912432;
 						var percentage = Math.round(item.loaded / item.total * 100)
 						console.log('Loaded:', percentage + '%');
 
